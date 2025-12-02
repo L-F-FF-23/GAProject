@@ -1,106 +1,81 @@
+# Requirements:
+# pip install requests tqdm
+
 import requests
 import json
-import re
-from datetime import datetime
+from tqdm import tqdm
 
-API_URL = "https://lol.fandom.com/api.php"
+API_KEY = "YOUR_PANDASCORE_KEY"  # <-- Replace this
+HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
-def get_all_match_pages():
-    matches = []
-    apcontinue = None
+OUTPUT_FILE = "lol_esports_2025.json"
+PER_PAGE = 50
+START_YEAR = "2025"
 
-    while True:
-        params = {
-            "action": "query",
-            "format": "json",
-            "list": "allpages",
-            "aplimit": "500",
-            "apnamespace": "0"
-        }
+# Step 1: Get a sample of videogames to find the correct slug
+print("Fetching videogame slugs...")
+vg_resp = requests.get("https://api.pandascore.co/v2/videogames", headers=HEADERS)
+if vg_resp.status_code != 200:
+    raise Exception(f"Failed to fetch videogames: {vg_resp.status_code}")
 
-        if apcontinue:
-            params["apcontinue"] = apcontinue
+vg_data = vg_resp.json()
 
-        res = requests.get(API_URL, params=params).json()
-        pages = res["query"]["allpages"]
+# Find LoL slug
+lol_slug = None
+for vg in vg_data:
+    if "league of legends" in vg["name"].lower():
+        lol_slug = vg["slug"]
+        break
 
-        for page in pages:
-            title = page["title"]
-            if " vs " in title:
-                matches.append(title)
+if not lol_slug:
+    raise Exception("Could not find League of Legends slug in PandaScore.")
 
-        if "continue" in res:
-            apcontinue = res["continue"]["apcontinue"]
-        else:
-            break
+print(f"Using videogame slug: {lol_slug}")
 
-    return matches
+# Step 2: Fetch matches
+all_matches = []
+page = 1
 
-def get_page_content(title):
+print("Fetching matches...")
+while True:
+    url = "https://api.pandascore.co/v2/matches"
     params = {
-        "action": "query",
-        "format": "json",
-        "prop": "revisions",
-        "rvslots": "main",
-        "rvprop": "content",
-        "titles": title,
+        "filter[videogame]": lol_slug,
+        "page": page,
+        "per_page": PER_PAGE,
+        "sort": "begin_at"
     }
-    res = requests.get(API_URL, params=params).json()
 
-    pages = res["query"]["pages"]
-    for pageid in pages:
+    resp = requests.get(url, headers=HEADERS, params=params)
+    if resp.status_code != 200:
+        print("Error:", resp.status_code, resp.text)
+        break
+
+    data = resp.json()
+    if not data:
+        break
+
+    for match in data:
         try:
-            return pages[pageid]["revisions"][0]["slots"]["main"]["*"]
-        except KeyError:
-            return ""
-    return ""
+            begin_at = match.get("begin_at", "")
+            if not begin_at.startswith(START_YEAR):
+                continue
+            if match.get("status") != "finished":
+                continue
 
-def extract_match_info(content):
-    """Extract team1, team2, winner only."""
-    team1 = re.search(r"\|\s*team1\s*=\s*(.*)", content)
-    team2 = re.search(r"\|\s*team2\s*=\s*(.*)", content)
-    winner = re.search(r"\|\s*winner\s*=\s*(.*)", content)
-    date = re.search(r"\|\s*date\s*=\s*(.*)", content)
+            team1 = match["opponents"][0]["opponent"]["name"]
+            team2 = match["opponents"][1]["opponent"]["name"]
+            winner = match.get("winner", {}).get("name")
+            all_matches.append({"team1": team1, "team2": team2, "winner": winner})
+        except Exception:
+            continue
 
-    def clean(x):
-        return x.group(1).strip() if x else None
+    tqdm.write(f"Fetched page {page}, total matches so far: {len(all_matches)}")
+    page += 1
 
-    # We still extract date internally for filtering, but do not output it.
-    return {
-        "team1": clean(team1),
-        "team2": clean(team2),
-        "winner": clean(winner),
-        "_date": clean(date)  # internal use only
-    }
+# Step 3: Save to JSON
+with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+    json.dump(all_matches, f, ensure_ascii=False, indent=2)
 
-def filter_matches_2025(match):
-    try:
-        if match["_date"] is None:
-            return False
-        year = datetime.strptime(match["_date"], "%Y-%m-%d").year
-        return year == 2025
-    except:
-        return False
-
-def main():
-    print("Fetching match pages...")
-    pages = get_all_match_pages()
-
-    results = []
-
-    for title in pages:
-        content = get_page_content(title)
-        info = extract_match_info(content)
-
-        if filter_matches_2025(info):
-            # Remove internal date before saving
-            del info["_date"]
-            results.append(info)
-
-    with open("matches_2025.json", "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=4)
-
-    print(f"Saved {len(results)} matches to matches_2025.json")
-
-if __name__ == "__main__":
-    main()
+print(f"Done! Total matches fetched: {len(all_matches)}")
+print(f"Saved JSON to {OUTPUT_FILE}")

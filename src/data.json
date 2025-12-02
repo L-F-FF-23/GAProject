@@ -1,0 +1,78 @@
+{
+  "match1": {
+    "Team1": "G2",
+    "Team2": "T1",
+    "Winner": "T1"
+  },
+
+  "match2": {
+    "Team1": "G2",
+    "Team2": "T1",
+    "Winner": "G2"
+  },
+  "match3": {
+    "Team1": "G2",
+    "Team2": "T1",
+    "Winner": "T1"
+  },
+  "match4": {
+    "Team1": "MKOI",
+    "Team2": "T1",
+    "Winner": "T1"
+  },
+  "match5": {
+    "Team1": "G2",
+    "Team2": "T1",
+    "Winner": "T1"
+  },
+  "match6": {
+    "Team1": "MKOI",
+    "Team2": "T1",
+    "Winner": "MKOI"
+  },
+  "match7": {
+    "Team1": "G2",
+    "Team2": "T1",
+    "Winner": "T1"
+  },
+  "match8": {
+    "Team1": "G2",
+    "Team2": "T1",
+    "Winner": "T1"
+  },
+  "match9": {
+    "Team1": "G2",
+    "Team2": "MKOI",
+    "Winner": "MKOI"
+  },
+  "match10": {
+    "Team1": "G2",
+    "Team2": "T1",
+    "Winner": "T1"
+  },
+  "match11": {
+    "Team1": "G2",
+    "Team2": "MKOI",
+    "Winner": "MKOI"
+  },
+  "match12": {
+    "Team1": "G2",
+    "Team2": "MKOI",
+    "Winner": "MKOI"
+  },
+  "match13": {
+    "Team1": "T1",
+    "Team2": "MKOI",
+    "Winner": "MKOI"
+  },
+  "match14": {
+    "Team1": "G2",
+    "Team2": "MKOI",
+    "Winner": "G2"
+  },
+  "match15": {
+    "Team1": "G2",
+    "Team2": "MKOI",
+    "Winner": "MKOI"
+  }
+}
