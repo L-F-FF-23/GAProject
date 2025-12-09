@@ -4,10 +4,13 @@ from torch import nn
 import json
 from sklearn.preprocessing import OneHotEncoder
 import numpy as np
+import matplotlib.pyplot as plt
 
 torch.manual_seed(42)
 
 encoder = OneHotEncoder()
+
+fig, ax = plt.subplots(1, 3, figsize=(15, 5))
 
 with open("data.json", "r") as f:
     data = json.load(f)
@@ -85,7 +88,13 @@ def accuracy_fn(y_true, y_pred):
     accuracy = correct / len(y_pred) * 100
     return accuracy
 
-epochs = 1000
+epochs = 400
+
+trainloss = []
+testloss = []
+trainaccuracy = []
+testaccuracy = []
+epochcount = []
 
 for epoch in range(epochs):
     model1.train()
@@ -94,7 +103,10 @@ for epoch in range(epochs):
 
     loss = loss_fn(y_logits, y_train)
 
-    print(f"Train Loss: {loss}")
+    train_acc = accuracy_fn(y_true=y_train, y_pred=torch.round(torch.sigmoid(y_logits)))
+
+    trainloss.append(loss)
+    trainaccuracy.append(train_acc)
 
     optimizer.zero_grad()
 
@@ -111,15 +123,40 @@ for epoch in range(epochs):
         test_loss = loss_fn(test_logits, y_test)
         test_acc = accuracy_fn(y_true=y_test, y_pred=test_preds)
 
-        print(f"Test Loss: {test_loss}")
+        testloss.append(test_loss)
+        testaccuracy.append(test_acc)
+        epochcount.append(epoch)
 
-        if epoch == 999:
-            print(test_acc)
-            print((torch.sigmoid(test_logits)).transpose(0,1).squeeze())
+        if epoch == 399:
+            ax[0].plot(epochcount, [v.detach().numpy() for v in trainloss], label="Training Loss")
+            ax[0].plot(epochcount, [v.detach().numpy() for v in testloss], label="Test Loss")
+            ax[0].set_title("Training and Test Loss")
+            ax[0].set_ylabel("Loss")
+            ax[0].set_xlabel("Epoch")
+            ax[0].legend(prop={'size': 14})
+
+            ax[1].plot(epochcount, [v for v in trainaccuracy], label="Training Accuracy")
+            ax[1].plot(epochcount, [v for v in testaccuracy], label="Test Accuracy")
+            ax[1].set_title("Training and Test Accuracy")
+            ax[1].set_ylabel("Accuracy")
+            ax[1].set_xlabel("Epoch")
+            ax[1].legend(prop={'size': 14})
+
             match1, match2, match3 = torch.split(X_test, 1, dim=0)
-            test_Match1 = match1.reshape(2, 3)
-            test_Match2 = match2.reshape(2, 3)
-            test_Match3 = match3.reshape(2, 3)
-            print(encoder.inverse_transform(test_Match1).reshape(2))
-            print(encoder.inverse_transform(test_Match2).reshape(2))
-            print(encoder.inverse_transform(test_Match3).reshape(2))
+            test_match1 = encoder.inverse_transform(match1.reshape(2, 3)).reshape(2)
+            test_match2 = encoder.inverse_transform(match2.reshape(2, 3)).reshape(2)
+            test_match3 = encoder.inverse_transform(match3.reshape(2, 3)).reshape(2)
+
+            test_match1_string = f"{test_match1[0]} vs {test_match1[1]}"
+            test_match2_string = f"{test_match2[0]} vs {test_match2[1]}"
+            test_match3_string = f"{test_match3[0]} vs {test_match3[1]}"
+
+            test_graph_results = torch.sigmoid(test_logits).transpose(0,1).squeeze()
+
+            ax[2].bar([test_match1_string, test_match2_string, test_match3_string], test_graph_results)
+            ax[2].set_title("Test Matches And Predictions After Training")
+            ax[2].set_ylim(bottom=0, top=1)
+            ax[2].set_ylabel("Chance that Team 1 wins")
+            ax[2].set_xlabel("Test Matches")
+
+            plt.show()
