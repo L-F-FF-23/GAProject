@@ -1,7 +1,6 @@
 import torch
 from sklearn.model_selection import train_test_split
 from torch import nn
-from sklearn.preprocessing import OneHotEncoder
 import numpy as np
 import matplotlib.pyplot as plt
 import csv
@@ -10,8 +9,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from collections import defaultdict
 
 torch.manual_seed(42)
-
-encoder = OneHotEncoder()
 
 fig, ax = plt.subplots(1, 3, figsize=(15, 5))
 
@@ -28,13 +25,15 @@ for row in datalist:
         allteams.append(row["teamname"])
 
 matchCount = len(allteams)//2
-finishedteams = np.unique(np.array(allteams)).reshape(-1,1)
-twoteamfeats = len(finishedteams)*2
+finishedteams = np.unique(np.array(allteams)).reshape(-1)
+teamsnametoids = {}
+teamsidtonames = {}
+for idx, name in enumerate(finishedteams):
+    teamsnametoids[name] = idx
+    teamsnametoids[idx] = name
+twoteamfeats = 4
 teamsdata = torch.zeros(matchCount, twoteamfeats)
 resultsdata = torch.zeros(matchCount, 1)
-winrates = np.zeros(shape=(445,443))
-
-encoder.fit(finishedteams)
 
 loopnum = 0
 
@@ -46,22 +45,40 @@ z = None
 
 for row in datalist:
     if row["participantid"] == "100":
-        x = encoder.transform(np.array(row["teamname"]).reshape(1,1)).toarray()
+        x = teamsnametoids[row["teamname"]]
+        team1 = row["teamname"]
         if row["result"] == "1":
             z = 1
         else:
             z = 0
         T1 = True
 
-    elif row["participantid"] == "200":
-        y = encoder.transform(np.array(row["teamname"]).reshape(1,1)).toarray()
+    if row["participantid"] == "200":
+        y = teamsnametoids[row["teamname"]]
+        team2 = row["teamname"]
         T2 = True
 
     if T1 == True and T2 == True:
-        numpyarray = np.concatenate((x, y), axis=None, dtype=np.float32)
+        sortedmatchteams = tuple(sorted([team1, team2]))
+        t1_wins, t2_wins = h2h[sortedmatchteams]
+        matchupcount = t1_wins + t2_wins
+        t1_wr = t1_wins / matchupcount if matchupcount > 0 else 0
+        t2_wr = t2_wins / matchupcount if matchupcount > 0 else 0
+        winrates = (t1_wr, t2_wr)
+        if sortedmatchteams[0] != team1:
+            winrates = (t2_wr, t1_wr)
+        numpyarray = np.concatenate((y, x, winrates), axis=None, dtype=np.float32)
         teamsdata[loopnum] = torch.from_numpy(numpyarray)
         resultsdata[loopnum] = z
         loopnum += 1
+
+        if sortedmatchteams[0] == team1:
+            h2h[sortedmatchteams][0] += z
+            h2h[sortedmatchteams][1] += 1 - z
+        else:
+            h2h[sortedmatchteams][1] += z
+            h2h[sortedmatchteams][0] += 1 - z
+
         T1 = False
         T2 = False
 
@@ -80,19 +97,23 @@ test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
 class Net(nn.Module):
     def __init__(self):
         super().__init__()
+        self.embedding = nn.Embedding(num_embeddings=len(finishedteams), embedding_dim=16)
         self.passthrough = nn.Sequential(
-            nn.Linear(twoteamfeats, 256),
+            nn.Linear(34, 75),
             nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(256, 128),
+            nn.Linear(75, 50),
             nn.ReLU(),
-            nn.Dropout(0.05),
-            nn.Linear(128, 32),
+            nn.Linear(50, 25),
             nn.ReLU(),
-            nn.Linear(32, 1)
+            nn.Linear(25, 1)
         )
 
     def forward(self, x):
+        modelteams, modelwr = x[:, :2], x[:, 2:]
+        modelteams = torch.tensor(data=modelteams, dtype=torch.long)
+        emb = self.embedding(modelteams)
+        emb = emb.view(128, 32)
+        x = torch.cat((emb, modelwr), dim=1)
         return self.passthrough(x)
 
 model1 = Net()
@@ -182,9 +203,9 @@ for epoch in range(epochs):
             match1 = torch.cat(torch.split(X_test[0], 1, dim=0))
             match2 = torch.cat(torch.split(X_test[1], 1, dim=0))
             match3 = torch.cat(torch.split(X_test[2], 1, dim=0))
-            test_match1 = encoder.inverse_transform(match1.view(2, -1)).reshape(2)
-            test_match2 = encoder.inverse_transform(match2.view(2, -1)).reshape(2)
-            test_match3 = encoder.inverse_transform(match3.view(2, -1)).reshape(2)
+            test_match1 = encoder.inverse_transform(match1[:-2].view(2, -1)).reshape(2)
+            test_match2 = encoder.inverse_transform(match2[:-2].view(2, -1)).reshape(2)
+            test_match3 = encoder.inverse_transform(match3[:-2].view(2, -1)).reshape(2)
 
             test_match1_string = f"{test_match1[0]} vs {test_match1[1]}"
             test_match2_string = f"{test_match2[0]} vs {test_match2[1]}"
