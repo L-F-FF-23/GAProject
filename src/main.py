@@ -101,8 +101,10 @@ class Net(nn.Module):
         self.passthrough = nn.Sequential(
             nn.Linear(34, 75),
             nn.ReLU(),
+            nn.Dropout(0.05),
             nn.Linear(75, 50),
             nn.ReLU(),
+            nn.Dropout(0.05),
             nn.Linear(50, 25),
             nn.ReLU(),
             nn.Linear(25, 1)
