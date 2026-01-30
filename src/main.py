@@ -13,6 +13,7 @@ torch.manual_seed(42)
 fig, ax = plt.subplots(1, 3, figsize=(15, 5))
 
 allteams = []
+allchamps = []
 
 with open(file="2025_LoL_esports_match_data_from_OraclesElixir.csv", mode="r", newline="", encoding="utf-8") as f:
     data = csv.DictReader(f)
@@ -23,15 +24,27 @@ h2h = defaultdict(lambda: [0, 0])
 for row in datalist:
     if row["participantid"] == "100" or row["participantid"] == "200":
         allteams.append(row["teamname"])
+        allchamps.append(row["pick1"])
+        allchamps.append(row["pick2"])
+        allchamps.append(row["pick3"])
+        allchamps.append(row["pick4"])
+        allchamps.append(row["pick5"])
+
 
 matchCount = len(allteams)//2
 finishedteams = np.unique(np.array(allteams)).reshape(-1)
+finishedchamps = np.unique(np.array(allchamps)).reshape(-1)
 teamsnametoids = {}
 teamsidtonames = {}
+champsnametoids = {}
+champsidtonames = {}
 for idx, name in enumerate(finishedteams):
     teamsnametoids[name] = idx
-    teamsnametoids[idx] = name
-twoteamfeats = 4
+    teamsidtonames[idx] = name
+for idx, name in enumerate(finishedchamps):
+    champsnametoids[name] = idx
+    champsidtonames[idx] = name
+twoteamfeats = 2 + 2
 teamsdata = torch.zeros(matchCount, twoteamfeats)
 resultsdata = torch.zeros(matchCount, 1)
 
@@ -42,10 +55,27 @@ T2 = False
 x = None
 y = None
 z = None
+team1 = None
+team2 = None
+champ1 = None
+champ2 = None
+champ3 = None
+champ4 = None
+champ5 = None
+champ6 = None
+champ7 = None
+champ8 = None
+champ9 = None
+champ10 = None
 
 for row in datalist:
     if row["participantid"] == "100":
         x = teamsnametoids[row["teamname"]]
+        champ1 = champsnametoids[row["pick1"]]
+        champ2 = champsnametoids[row["pick2"]]
+        champ3 = champsnametoids[row["pick3"]]
+        champ4 = champsnametoids[row["pick4"]]
+        champ5 = champsnametoids[row["pick5"]]
         team1 = row["teamname"]
         if row["result"] == "1":
             z = 1
@@ -55,6 +85,11 @@ for row in datalist:
 
     if row["participantid"] == "200":
         y = teamsnametoids[row["teamname"]]
+        champ6 = champsnametoids[row["pick1"]]
+        champ7 = champsnametoids[row["pick2"]]
+        champ8 = champsnametoids[row["pick3"]]
+        champ9 = champsnametoids[row["pick4"]]
+        champ10 = champsnametoids[row["pick5"]]
         team2 = row["teamname"]
         T2 = True
 
@@ -67,7 +102,7 @@ for row in datalist:
         winrates = (t1_wr, t2_wr)
         if sortedmatchteams[0] != team1:
             winrates = (t2_wr, t1_wr)
-        numpyarray = np.concatenate((y, x, winrates), axis=None, dtype=np.float32)
+        numpyarray = np.concatenate((x, champ1, champ2, champ3, champ4, champ5, y, champ6, champ7, champ8, champ9, champ10, winrates), axis=None, dtype=np.float32)
         teamsdata[loopnum] = torch.from_numpy(numpyarray)
         resultsdata[loopnum] = z
         loopnum += 1
@@ -86,43 +121,46 @@ for row in datalist:
 X_data = teamsdata
 y_data = resultsdata
 
-X_train, X_test, y_train, y_test = train_test_split(X_data, y_data, test_size=0.2, shuffle=False)
+X_train, X_test, y_train, y_test = train_test_split(X_data, y_data, test_size=0.2, shuffle=True)
 
 train_dataset = TensorDataset(X_train, y_train)
 test_dataset = TensorDataset(X_test, y_test)
 
-train_loader = DataLoader(train_dataset, batch_size=128, shuffle=False)
-test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=64, shuffle=True)
 
 class Net(nn.Module):
     def __init__(self):
         super().__init__()
-        self.embedding = nn.Embedding(num_embeddings=len(finishedteams), embedding_dim=16)
+        self.team_embedding = nn.Embedding(num_embeddings=len(finishedteams), embedding_dim=8)
+        self.champ_embedding = nn.Embedding(num_embeddings=len(finishedchamps), embedding_dim=8)
+
         self.passthrough = nn.Sequential(
-            nn.Linear(34, 75),
+            nn.Linear(50, 75),
             nn.ReLU(),
-            nn.Dropout(0.05),
+            nn.Dropout(0.1),
             nn.Linear(75, 50),
             nn.ReLU(),
-            nn.Dropout(0.05),
+            nn.Dropout(0.1),
             nn.Linear(50, 25),
             nn.ReLU(),
             nn.Linear(25, 1)
         )
 
     def forward(self, x):
-        modelteams, modelwr = x[:, :2], x[:, 2:]
-        modelteams = torch.tensor(data=modelteams, dtype=torch.long)
-        emb = self.embedding(modelteams)
-        emb = emb.view(128, 32)
-        x = torch.cat((emb, modelwr), dim=1)
+        modelteams, modelchamps, modelwr = torch.cat((x[:, 0], x[:, 6]), dim=0), torch.cat((x[0, 1:6]), dim=0), x[:, :-2]
+        modelteams = modelteams.long()
+        teamsemb = self.team_embedding(modelteams)
+        champsemb
+        teamsemb = teamsemb.view(-1, 16)
+        x = torch.cat((teamsemb, modelwr), dim=1)
         return self.passthrough(x)
 
 model1 = Net()
 
 loss_fn = nn.BCEWithLogitsLoss()
 
-optimizer = torch.optim.AdamW(model1.parameters(), lr=0.0005, weight_decay=0.0005)
+optimizer = torch.optim.AdamW(model1.parameters(), lr=0.0002, weight_decay=0.0005)
 
 def accuracy_fn(y_true, y_pred):
     correct = torch.eq(y_true, y_pred).sum().item()
@@ -202,16 +240,14 @@ for epoch in range(epochs):
             ax[1].legend(prop={'size': 14})
 
 
-            match1 = torch.cat(torch.split(X_test[0], 1, dim=0))
-            match2 = torch.cat(torch.split(X_test[1], 1, dim=0))
-            match3 = torch.cat(torch.split(X_test[2], 1, dim=0))
-            test_match1 = encoder.inverse_transform(match1[:-2].view(2, -1)).reshape(2)
-            test_match2 = encoder.inverse_transform(match2[:-2].view(2, -1)).reshape(2)
-            test_match3 = encoder.inverse_transform(match3[:-2].view(2, -1)).reshape(2)
 
-            test_match1_string = f"{test_match1[0]} vs {test_match1[1]}"
-            test_match2_string = f"{test_match2[0]} vs {test_match2[1]}"
-            test_match3_string = f"{test_match3[0]} vs {test_match3[1]}"
+            test_match1_team1, test_match1_team2  = X_test[0,0].int().item(), X_test[0,1].int().item()
+            test_match2_team1, test_match2_team2  = X_test[1,0].int().item(), X_test[1,1].int().item()
+            test_match3_team1, test_match3_team2  = X_test[2,0].int().item(), X_test[2,1].int().item()
+
+            test_match1_string = f"{teamsidtonames[test_match1_team1]} vs {teamsidtonames[test_match1_team2]}"
+            test_match2_string = f"{teamsidtonames[test_match2_team1]} vs {teamsidtonames[test_match2_team2]}"
+            test_match3_string = f"{teamsidtonames[test_match3_team1]} vs {teamsidtonames[test_match3_team2]}"
 
             test_graph_results = torch.sigmoid(torch.cat((test_logits[0], test_logits[1], test_logits[2]))) #.transpose(0,1).squeeze()
 
