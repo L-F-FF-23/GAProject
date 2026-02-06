@@ -44,7 +44,7 @@ for idx, name in enumerate(finishedteams):
 for idx, name in enumerate(finishedchamps):
     champsnametoids[name] = idx
     champsidtonames[idx] = name
-twoteamfeats = 2 + 2
+twoteamfeats = 2 + 2 + 10
 teamsdata = torch.zeros(matchCount, twoteamfeats)
 resultsdata = torch.zeros(matchCount, 1)
 
@@ -136,24 +136,26 @@ class Net(nn.Module):
         self.champ_embedding = nn.Embedding(num_embeddings=len(finishedchamps), embedding_dim=8)
 
         self.passthrough = nn.Sequential(
-            nn.Linear(50, 75),
+            nn.Linear(98, 100),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(100, 75),
             nn.ReLU(),
             nn.Dropout(0.1),
             nn.Linear(75, 50),
             nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(50, 25),
-            nn.ReLU(),
-            nn.Linear(25, 1)
+            nn.Linear(50, 1)
         )
 
     def forward(self, x):
-        modelteams, modelchamps, modelwr = torch.cat((x[:, 0], x[:, 6]), dim=0), torch.cat((x[0, 1:6]), dim=0), x[:, :-2]
+        modelteams, modelchamps, modelwr = torch.cat((x[:, 0], x[:, 6]), dim=0), torch.cat((x[:, 1:6], x[:, 7:12]), dim=0), x[:, -2:]
         modelteams = modelteams.long()
+        modelchamps = modelchamps.long()
         teamsemb = self.team_embedding(modelteams)
-        champsemb
+        champsemb = self.champ_embedding(modelchamps)
         teamsemb = teamsemb.view(-1, 16)
-        x = torch.cat((teamsemb, modelwr), dim=1)
+        champsemb = champsemb.view(-1, 80)
+        x = torch.cat((teamsemb, champsemb, modelwr), dim=1)
         return self.passthrough(x)
 
 model1 = Net()
@@ -168,7 +170,7 @@ def accuracy_fn(y_true, y_pred):
     accuracy = correct / len(y_pred) * 100
     return accuracy
 
-epochs = 100
+epochs = 500
 trainloss = []
 testloss = []
 trainaccuracy = []
@@ -241,9 +243,9 @@ for epoch in range(epochs):
 
 
 
-            test_match1_team1, test_match1_team2  = X_test[0,0].int().item(), X_test[0,1].int().item()
-            test_match2_team1, test_match2_team2  = X_test[1,0].int().item(), X_test[1,1].int().item()
-            test_match3_team1, test_match3_team2  = X_test[2,0].int().item(), X_test[2,1].int().item()
+            test_match1_team1, test_match1_team2  = X_test[0,0].int().item(), X_test[0,6].int().item()
+            test_match2_team1, test_match2_team2  = X_test[1,0].int().item(), X_test[1,6].int().item()
+            test_match3_team1, test_match3_team2  = X_test[2,0].int().item(), X_test[2,6].int().item()
 
             test_match1_string = f"{teamsidtonames[test_match1_team1]} vs {teamsidtonames[test_match1_team2]}"
             test_match2_string = f"{teamsidtonames[test_match2_team1]} vs {teamsidtonames[test_match2_team2]}"
