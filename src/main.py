@@ -8,19 +8,23 @@ from pathlib import Path
 from torch.utils.data import DataLoader, TensorDataset
 from collections import defaultdict
 
-torch.manual_seed(42)
+torch.manual_seed(42) # sets a random seed, which is used for controlled randomness
 
-fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+fig, ax = plt.subplots(1, 3, figsize=(15, 5)) # base plot which then the 3 graph in the end gets added to
 
+# two lists which will include every single team and champion that the code finds in the csv, has duplicates
 allteams = []
 allchamps = []
 
+# opens the csv file and saves it as a list so the rest of the code can access the data
 with open(file="2025_LoL_esports_match_data_from_OraclesElixir.csv", mode="r", newline="", encoding="utf-8") as f:
     data = csv.DictReader(f)
     datalist = list(data)
 
-h2h = defaultdict(lambda: [0, 0])
 
+h2h = defaultdict(lambda: [0, 0]) # head 2 head, it's a defaultdict which creates a list with 2 zeroes whenever called if the h2h[data] doesn't exist
+
+# looks through the matches in the data and takes every teams name and the 5 champions both teams played
 for row in datalist:
     if row["participantid"] == "100" or row["participantid"] == "200":
         allteams.append(row["teamname"])
@@ -30,10 +34,13 @@ for row in datalist:
         allchamps.append(row["pick4"])
         allchamps.append(row["pick5"])
 
-
 matchCount = len(allteams)//2
+
+# takes the full lists and removes all duplicates
 finishedteams = np.unique(np.array(allteams)).reshape(-1)
 finishedchamps = np.unique(np.array(allchamps)).reshape(-1)
+
+# empty dicts which then gets filled with every team with an assigned number and every champion with an assigned number (and vice versa)
 teamsnametoids = {}
 teamsidtonames = {}
 champsnametoids = {}
@@ -44,12 +51,16 @@ for idx, name in enumerate(finishedteams):
 for idx, name in enumerate(finishedchamps):
     champsnametoids[name] = idx
     champsidtonames[idx] = name
-twoteamfeats = 2 + 2 + 10
+
+twoteamfeats = 2 + 2 + 10 # used to know how many feats a full match has before embedding
+
+# creates two empty tensors which will be filled with the file data later on
 teamsdata = torch.zeros(matchCount, twoteamfeats)
 resultsdata = torch.zeros(matchCount, 1)
 
 loopnum = 0
 
+# sets default values, this only exists to prevent the code complaining at me for a value being able to be unassigned
 T1 = False
 T2 = False
 x = None
@@ -68,6 +79,7 @@ champ8 = None
 champ9 = None
 champ10 = None
 
+# goes through every match and takes the teams names, the champions played and makes a winrate counter (if one already exists it will instead add onto the existing one)
 for row in datalist:
     if row["participantid"] == "100":
         x = teamsnametoids[row["teamname"]]
@@ -118,20 +130,24 @@ for row in datalist:
         T2 = False
 
 
+# finished datasets
 X_data = teamsdata
 y_data = resultsdata
 
+# splits into training and testing sets
 X_train, X_test, y_train, y_test = train_test_split(X_data, y_data, test_size=0.2, shuffle=True)
 
+# makes them into datasets which is useful for batching and shuffling
 train_dataset = TensorDataset(X_train, y_train)
 test_dataset = TensorDataset(X_test, y_test)
-
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=True)
 
+# the models code
 class Net(nn.Module):
     def __init__(self):
         super().__init__()
+        # write embedding comments here
         self.team_embedding = nn.Embedding(num_embeddings=len(finishedteams), embedding_dim=8)
         self.champ_embedding = nn.Embedding(num_embeddings=len(finishedchamps), embedding_dim=8)
 
