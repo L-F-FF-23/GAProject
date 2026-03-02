@@ -147,46 +147,54 @@ test_loader = DataLoader(test_dataset, batch_size=64, shuffle=True)
 class Net(nn.Module):
     def __init__(self):
         super().__init__()
-        # write embedding comments here
+
+        # embedding, it's a way for the model to turn numbers into a separate tensor to more easily recognize it when computing, so every team and champions name gets turned into a 1d tensors with 8 random numbers each
         self.team_embedding = nn.Embedding(num_embeddings=len(finishedteams), embedding_dim=8)
         self.champ_embedding = nn.Embedding(num_embeddings=len(finishedchamps), embedding_dim=8)
 
+        # This is the sequence that the model does after all the data has been properly transformed
         self.passthrough = nn.Sequential(
-            nn.Linear(98, 100),
-            nn.ReLU(),
-            nn.Dropout(0.1),
+            nn.Linear(98, 100), # applies simple linear y = kx + m
+            nn.ReLU(), # allows the model to do non-linearity, it does this through math I don't fully understand
+            nn.Dropout(0.1), # disables an amount of neurons in the layer, this way the neural network can't rely on certain neurons and needs to find patterns
             nn.Linear(100, 75),
             nn.ReLU(),
             nn.Dropout(0.1),
             nn.Linear(75, 50),
             nn.ReLU(),
-            nn.Linear(50, 1)
+            nn.Linear(50, 1) # the last out feature here is the probability of team 1 winning in logits
         )
 
     def forward(self, x):
-        modelteams, modelchamps, modelwr = torch.cat((x[:, 0], x[:, 6]), dim=0), torch.cat((x[:, 1:6], x[:, 7:12]), dim=0), x[:, -2:]
+        modelteams, modelchamps, modelwr = torch.cat((x[:, 0], x[:, 6]), dim=0), torch.cat((x[:, 1:6], x[:, 7:12]), dim=0), x[:, -2:] # splits up the input batch for embedding
+
+        # both needs to be a long otherwise embedding breaks
         modelteams = modelteams.long()
         modelchamps = modelchamps.long()
+
+        # here the model takes in all the teams in one tensor and the champions in another, and turns them from a digit to multiple ones. This is to prevent the model from thinking one team is stronger than another just because one team has the digit 4 and another is 103 for example
         teamsemb = self.team_embedding(modelteams)
         champsemb = self.champ_embedding(modelchamps)
+
+        # just reorients the tensor to be able to be remerged into the data
         teamsemb = teamsemb.view(-1, 16)
         champsemb = champsemb.view(-1, 80)
-        x = torch.cat((teamsemb, champsemb, modelwr), dim=1)
+        x = torch.cat((teamsemb, champsemb, modelwr), dim=1) # puts back all the tensors into one so it can be processed by the model
         return self.passthrough(x)
 
-model1 = Net()
+model1 = Net() # puts the model in a usable variable
 
-loss_fn = nn.BCEWithLogitsLoss()
+loss_fn = nn.BCEWithLogitsLoss() # loss function used to calculate how far off the model is, uses WithLogitsLoss to avoid coding that in automatically
 
-optimizer = torch.optim.AdamW(model1.parameters(), lr=0.0002, weight_decay=0.0005)
+optimizer = torch.optim.AdamW(model1.parameters(), lr=0.0002, weight_decay=0.0005) # optimizer, lr (learning rate) = how big steps the model takes when adjusting, weight_decay = penalizes the model for updating the weights too much to prevent overfitting
 
-def accuracy_fn(y_true, y_pred):
+def accuracy_fn(y_true, y_pred): # simple function to calculate the accuracy of the model
     correct = torch.eq(y_true, y_pred).sum().item()
 
     accuracy = correct / len(y_pred) * 100
     return accuracy
 
-epochs = 500
+epochs = 500 # how many training and test loops
 trainloss = []
 testloss = []
 trainaccuracy = []
@@ -194,32 +202,33 @@ testaccuracy = []
 epochcount = []
 
 for epoch in range(epochs):
-    model1.train()
+    model1.train() # sets the model in training mode to allow certain layers to act a certain way during the training of the model
     train_batch_preds = []
     train_batch_labels = []
     train_batch_loss = 0
 
     for X_batch, y_batch in train_loader:
-        y_logits = model1(X_batch)
-        loss = loss_fn(y_logits, y_batch)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        y_logits = model1(X_batch) # sends in a batch of tensors and returns the logit result
+        loss = loss_fn(y_logits, y_batch) # put the models result and the real result into the loss function and gives out the loss
+        optimizer.zero_grad() # resets optimizer between steps to prevent the optimizer for accumulating
+        loss.backward() # the model looks at the loss and compares it with its own parameters
+        optimizer.step() # the model then uses the optimizer to change the bias and weight of the parameters to improve loss
 
-        train_batch_loss += loss.item() * len(y_batch)
-        train_batch_preds.append(torch.sigmoid(y_logits))
+        train_batch_loss += loss.item() * len(y_batch) # multiply the loss with batch size to give all the losses the same weight when putting it together
+        train_batch_preds.append(torch.sigmoid(y_logits)) # sigmoid is used here to turn logits into actual chance decimals, this is what using WithLogitsLoss bypasses when feeding into the loss function
         train_batch_labels.append(y_batch)
 
     train_epoch_preds = torch.cat(train_batch_preds)
-    train_epoch_labels = torch.cat(train_batch_labels)
-    train_epoch_loss = train_batch_loss / len(train_loader.dataset)
-    train_epoch_acc = accuracy_fn(y_true=train_epoch_labels, y_pred=torch.round(train_epoch_preds))
+    train_epoch_labels = torch.cat(train_batch_labels) # simply takes all the batches predictions and labels and turns them into one tensor for the epoch
+    train_epoch_loss = train_batch_loss / len(train_loader.dataset) # need to divide by train_loader.dataset size to account for different batch sizes
+    train_epoch_acc = accuracy_fn(y_true=train_epoch_labels, y_pred=torch.round(train_epoch_preds)) # runs the accuracy function to check how many times the model guessed in favour of the team that actually won
 
     trainloss.append(train_epoch_loss)
     trainaccuracy.append(train_epoch_acc)
 
-    model1.eval()
-    with (torch.inference_mode()):
+    model1.eval() # evaluation mode used for testing and changes behavior in certain layers
+    with (torch.inference_mode()): # disables gradient decent among other things needed for the testing process
+        # then it's basically just a repeat of the training function without the optimization, testing is only used so the creator can view progress on unseen data
         test_batch_preds = []
         test_batch_labels = []
         test_batch_loss = 0
@@ -242,6 +251,7 @@ for epoch in range(epochs):
         testaccuracy.append(test_epoch_acc)
         epochcount.append(epoch)
 
+        # creates the graphs for training and testing, loss and accuracy
         if epoch == 99:
             ax[0].plot(epochcount, [v for v in trainloss], label="Training Loss")
             ax[0].plot(epochcount, [v for v in testloss], label="Test Loss")
@@ -257,8 +267,7 @@ for epoch in range(epochs):
             ax[1].set_xlabel("Epoch")
             ax[1].legend(prop={'size': 14})
 
-
-
+            # this batch of code takes 3 of the testing matchups that were ran in the final epoch and plots them into the matplot window, then it executes plt.show() to show all the graphs plotted throughout the code
             test_match1_team1, test_match1_team2  = X_test[0,0].int().item(), X_test[0,6].int().item()
             test_match2_team1, test_match2_team2  = X_test[1,0].int().item(), X_test[1,6].int().item()
             test_match3_team1, test_match3_team2  = X_test[2,0].int().item(), X_test[2,6].int().item()
@@ -277,6 +286,7 @@ for epoch in range(epochs):
 
             plt.show()
 
+# finally this saves the parameters of the model so if another person had this code they could simply import the parameters (from src/models) without needing to train it
 MODEL_PATH = Path("models")
 MODEL_PATH.mkdir(parents=True, exist_ok=True)
 
